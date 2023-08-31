@@ -1,5 +1,5 @@
 import os
-os.environ['CUDA_VISIBLE_DEVICES']='1'
+os.environ['CUDA_VISIBLE_DEVICES']='5'
 
 import argparse
 import numpy as np
@@ -21,23 +21,26 @@ from lib.pyramid import process_multiscale
 # set device
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda:0" if use_cuda else "cpu")
-# 相机内参
-k=np.array([[259.09196890763241,0,3.0389934394165209e+02],
-            [0,258.91454340850947,244.70094767551925],
-            [0, 0, 1]])
+# 相机内参 
+k = np.array([[2.5493694140950984e+02, 0, 3.3958970225755928e+02],               
+              [0, 2.5463452970785917e+02, 2.4282638011463291e+02],               
+              [0, 0, 1]]) 
 # 相机畸变参数
-CDP=np.array([5.6250819388809450e-02,-1.2304030974433684e-01,1.5401797739192118e-05,
-              -6.2692468784740669e-05,3.4887302271479820e-02])
+CDP = np.array([-1.1003412529587565e-01,                 
+                -3.2512298569625435e-03,                  
+                -6.1055603631990905e-04,                 
+                -1.8817657758755631e-03,                 
+                2.2227416180894094e-03])
 
 
 # Argument parsing
 parser = argparse.ArgumentParser(description='Feature extraction script')
 # waht this script need
 parser.add_argument('--data_path', type=str, 
-                    default='/home/chenxiang/code/d2-net/test',
+                    default='/home/chenxiang/code/d2net_simpletracker/20230702',
                     help='path to a file containinga lists of images solute path')
 parser.add_argument('--pair', type=str, 
-                    default='1044_733',
+                    default='1lux_infrared_RGB_1',
                     help='which pair you want to compare')
 
 
@@ -81,8 +84,30 @@ class Tracker1(object):
             for pt1 in pts:
                 p1 = (int(round(pt1[0])), int(round(pt1[1])))
                 cv2.circle(out, p1, 1, (0, 0, 255), -1, lineType=16)
+            return out, N_matches
+        
         else:
             matches = self.mnn_mather(self.desc_prev, desc)
+
+            # here we use RANSAC to 
+            if matches.shape[0] > 8:
+                    pt1 = []
+                    pt2 = []
+                    for i in range(matches.shape[0]):
+                        pt1.append(self.pts_prev[int(matches[i][0]),:])
+                        pt2.append(pts[int(matches[i][1]),:])
+                    pt1 = np.array(pt1)[:,:-1]
+                    pt2 = np.array(pt2)[:,:-1]
+                    _, mask = cv2.findEssentialMat(pt1, pt2, k, cv2.RANSAC)
+                    matches_new = []
+                    for i in range(mask.shape[0]):
+                        if mask[i][0] == 0:
+                            continue
+                        else:
+                            matches_new.append(matches[i,:])
+                    matches_new = np.array(matches_new)
+                    matches = matches_new
+
             mpts1, mpts2 = self.pts_prev[matches[:, 0]], pts[matches[:, 1]]
             N_matches = len(matches)
 
@@ -94,7 +119,7 @@ class Tracker1(object):
                     p1 = (int(round(pt1[0])), int(round(pt1[1])))
                     p2 = (int(round(pt2[0])), int(round(pt2[1])))
                     output_result = args.data_path + "/matches"
-                    os.makedirs(output_result, exist_ok=True)
+                    # os.makedirs(output_result, exist_ok=True)
 
                     f.write("{} {} {} {}\n".format(pt1[0], pt1[1], pt2[0], pt2[1]))
 
@@ -103,8 +128,7 @@ class Tracker1(object):
 
                 self.pts_prev = pts
                 self.desc_prev = desc
-
-        return out, N_matches
+            return out, N_matches
 
     def mnn_mather(self, desc1, desc2):
         sim = desc1 @ desc2.transpose()
@@ -184,6 +208,12 @@ for line in tqdm(lines, total=len(lines)):
     frame_id+=1
     d2net_point += int(keypoints.shape[0])
     match_num_total += N_matches
+
+    write_dir = args.data_path + "/output_" + args.pair
+    if not os.path.exists(write_dir):
+            os.makedirs(write_dir)
+    out_file = os.path.join(write_dir, "frame_%05d.png" % frame_id)
+    cv2.imwrite(out_file, out)
 end=time.time()
 
 # "frame_id" equals to "total image nums"

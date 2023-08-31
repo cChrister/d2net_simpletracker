@@ -8,6 +8,7 @@ Python 3.6+ is recommended for running our code. [Conda](https://docs.conda.io/e
 ```bash
 conda install pytorch torchvision cudatoolkit=10.0 -c pytorch
 conda install h5py imageio imagesize matplotlib numpy scipy tqdm
+conda install -c conda-forge opencv
 ```
 
 ## Downloading the models
